@@ -3,10 +3,12 @@ package com.example.administrator.accessibilityservicedemo;
 import android.accessibilityservice.AccessibilityService;
 import android.annotation.TargetApi;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityRecord;
 import android.widget.Toast;
 
 import com.blankj.utilcode.util.LogUtils;
@@ -52,8 +54,56 @@ public class DemoService extends AccessibilityService {
     @Override
     public void onAccessibilityEvent(AccessibilityEvent accessibilityEvent) {
 
-        LogUtils.d(accessibilityEvent.toString());
+//        LogUtils.d(accessibilityEvent.toString());
+//
+//
+//        LogUtils.d(accessibilityEvent.getPackageName());
+//        LogUtils.d(accessibilityEvent.getClassName());
 
+        if ("com.tencent.mm".equals(accessibilityEvent.getPackageName())) {
+            LogUtils.d("找到微信");
+//            if (accessibilityEvent.getContentChangeTypes() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+
+            List<AccessibilityNodeInfo> find = getRootInActiveWindow().findAccessibilityNodeInfosByViewId(WeChatWidgetId.BOTTOM_TAB);
+
+            if (find != null && find.size() > 0) {
+
+                LogUtils.d("准备跳转朋友圈");
+
+                nodePerformInfoClick(find.get(2));
+
+                sleep(2000L);
+
+                AccessibilityNodeInfo snsTimeLine = getFirstNodeInfoByText("朋友圈");
+                nodePerformInfoClick(snsTimeLine);
+
+                sleep(2000L);
+
+            }
+
+            int time = 5;
+            while (time > 0) {
+                LogUtils.d("time" + time);
+                time--;
+                AccessibilityNodeInfo snsTimeLineList = getFirstNodeInfoByViewId(WeChatWidgetId.SNS_LIST);
+
+                if (snsTimeLineList != null) {
+                    List<AccessibilityNodeInfo> snsComments = getNodeInfosByViewId(WeChatWidgetId.SNS_COMMENT);
+                    if (snsComments != null && snsComments.size() > 0) {
+                        for (AccessibilityNodeInfo snsComment : snsComments) {
+                            nodePerformInfoClick(snsComment);
+                            AccessibilityNodeInfo snsFavour = getFirstNodeInfoByViewId(WeChatWidgetId.SNS_FAVOUR);
+                            if (snsFavour != null) {
+                                nodePerformInfoClick(snsFavour);
+                            }
+                        }
+                    }
+                    snsTimeLineList.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+                }
+            }
+        }
+
+//        }
        /* LogUtils.d("getPackageName:" + accessibilityEvent.getPackageName()
                 + "\n" + accessibilityEvent.getClassName()
                 + "\n" + "getAction:" + accessibilityEvent.getAction()
@@ -62,7 +112,6 @@ public class DemoService extends AccessibilityService {
                 + "\n" + "getEventTime:" + accessibilityEvent.getEventTime()
                 + "\n" + "getMovementGranularity:" + accessibilityEvent.getMovementGranularity()
                 + "\n" + "getRecordCount:" + accessibilityEvent.getRecordCount());*/
-
 
 
     }
@@ -234,7 +283,6 @@ public class DemoService extends AccessibilityService {
         }
     }
 
-    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
     protected AccessibilityNodeInfo getFirstNodeInfoByViewId(String viewId) {
         AccessibilityNodeInfo rootNode = getRootInActiveWindow();
         if (rootNode == null) {
@@ -251,7 +299,6 @@ public class DemoService extends AccessibilityService {
         return nodeInfos.size() > 0 ? nodeInfos.get(0) : null;
     }
 
-    @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
     protected AccessibilityNodeInfo getFirstNodeInfoByText(String name) {
         AccessibilityNodeInfo rootNode = getRootInActiveWindow();
         if (rootNode == null) {
@@ -268,10 +315,25 @@ public class DemoService extends AccessibilityService {
         return nodeInfos.size() > 0 ? nodeInfos.get(0) : null;
     }
 
+    protected List<AccessibilityNodeInfo> getNodeInfosByViewId(String viewId) {
+        if (getRootInActiveWindow() == null) {
+            LogUtils.e("getFirstNodeInfoByViewId: getRootNode is null ,viewId:" + viewId);
+            return null;
+        }
+        return getRootInActiveWindow().findAccessibilityNodeInfosByViewId(viewId);
+    }
+
+    protected List<AccessibilityNodeInfo> getNodeInfosByText(String text) {
+        if (getRootInActiveWindow() == null) {
+            LogUtils.e("getFirstNodeInfoByText :  getRootNode is null ,name :" + text);
+            return null;
+        }
+        return getRootInActiveWindow().findAccessibilityNodeInfosByText(text);
+    }
+
     /**
      * 打开最近列表并点击返回，使当前窗口获得焦点
      */
-    @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
     public void getFocus() {
         performGlobalAction(AccessibilityService.GLOBAL_ACTION_RECENTS);
         sleep(2000L);
@@ -282,8 +344,65 @@ public class DemoService extends AccessibilityService {
     /**
      * 点击“返回”按键
      */
-    @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
     public boolean returnBackByAccessibly() {
         return performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK);
+    }
+
+    protected boolean nodePerformInfoClick(AccessibilityNodeInfo nodeInfo) {
+        while (nodeInfo != null && !nodeInfo.isClickable()) {
+            nodeInfo = nodeInfo.getParent();
+        }
+        if (nodeInfo != null) {
+            nodeInfo.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            return true;
+        }
+        return false;
+    }
+
+    protected void setEditText(AccessibilityNodeInfo editNodeInfo, String text) {
+        Bundle arguments = new Bundle();
+        arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
+        editNodeInfo.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments);
+    }
+
+    /**
+     * <b>能否返回微信主页</b>
+     * <p>1.判断是否有弹窗（比如朋友圈点返回时）</p>
+     * <p>2.判断左上角是否有“回退”按钮（2种ID）</p>
+     * <p>3.判断当前节点是否有主页的4个导航按钮（主页有）</p>
+     * <p>4.直接点“回退”键（查看图片界面）</p>
+     */
+    public boolean returnMain() {
+        int time = 0;
+        while (time < 15) {
+            time++;
+            if (getRootInActiveWindow() == null) {
+                getFocus();
+            }
+//            AccessibilityNodeInfo quit = getFirstNodeInfoByViewId(WeChatWidgetId.BUTTON_POSITIVE);
+            AccessibilityNodeInfo returnNormal = getFirstNodeInfoByViewId(WeChatWidgetId.RETURN);
+            AccessibilityNodeInfo returnSpecial = getFirstNodeInfoByViewId(WeChatWidgetId.RETURN_SPECIAL);
+            List<AccessibilityNodeInfo> bottomTab = getRootInActiveWindow().findAccessibilityNodeInfosByViewId(WeChatWidgetId.BOTTOM_TAB);
+            /*if (quit != null) {
+                nodePerformInfoClick(quit);
+                sleep(2000L);
+            } else */
+            if (returnNormal != null) {
+                nodePerformInfoClick(returnNormal);
+                sleep(2000L);
+            } else if (returnSpecial != null) {
+                nodePerformInfoClick(returnSpecial);
+                sleep(2000L);
+            } else if (bottomTab != null && bottomTab.size() > 0) {
+                LogUtils.d("find wechat main,time=" + time);
+                sleep(2000L);
+                return true;
+            } else {
+                returnBackByAccessibly();
+                sleep(2000L);
+            }
+        }
+        LogUtils.e("could not find wechat main,time=" + time);
+        return false;
     }
 }
